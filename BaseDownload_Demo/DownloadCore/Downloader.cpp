@@ -251,10 +251,10 @@ private:
             fsize_score = 0.25;
         }
         else if (file_size < 50 * 1024 * 1024) {  // 5-50MB
-            fsize_score = 0.3;
+            fsize_score = 0.4;
         }
         else if (file_size < 200 * 1024 * 1024) {  // 50-200MB
-            fsize_score = 0.6;
+            fsize_score = 0.5;
         }
         else if (file_size < 500 * 1024 * 1024) {  // 200-500MB
             fsize_score = 0.7;
