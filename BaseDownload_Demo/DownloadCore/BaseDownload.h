@@ -9,8 +9,12 @@
 class BaseDownload : public QObject
 {
     Q_OBJECT
+    struct ReplyInfo {
+        QString uid;
+        bool is_stop;
+    };
     using NetPtr = std::unique_ptr<QNetworkAccessManager>;
-    using ReplyReflect = std::unordered_map<QNetworkReply*, QString>;
+    using ReplyReflect = std::unordered_map<QNetworkReply*, ReplyInfo>;
     using ReadyReadCb = std::function<void(const QString&, QByteArray&&)>;
 
 public:
@@ -51,6 +55,7 @@ private slots:
 
 private:
     QString CreateUid() const;
+    void AbortReply(QNetworkReply* reply, ReplyInfo& info);
 
 private:
     NetPtr net_mng_;

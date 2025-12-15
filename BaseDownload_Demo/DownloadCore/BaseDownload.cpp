@@ -35,7 +35,7 @@ void BaseDownload::ReqDownloadInfo() {
     QNetworkReply* reply = net_mng_->head(request);
     connect(reply, &QNetworkReply::finished, this, &BaseDownload::SlotDownloadInfo);
 
-    refle_[reply] = "main_reply";
+    refle_[reply] = { "main_reply", false };
 }
 
 
@@ -60,7 +60,7 @@ QString BaseDownload::Download(int64_t begin, int64_t end) {
     connect(reply, &QNetworkReply::finished, this, &BaseDownload::SlotDownloadFinished);
 
     QString uid = CreateUid();
-    refle_[reply] = uid;
+    refle_[reply] = { uid, false };
 
     return uid;
 }
@@ -75,13 +75,12 @@ void BaseDownload::StopRequest() {
 
 void BaseDownload::StopDownload(const QString &uid) {
     for (auto iter = refle_.begin(); iter != refle_.end(); ++iter) {
-        if (iter->second != uid) {
+        if (iter->second.uid != uid) {
             continue;
         }
-
-        iter->first->abort();
-        iter->first->deleteLater();
-        iter = refle_.erase(iter);
+        if (!iter->second.is_stop) {
+            AbortReply(iter->first, iter->second);
+        }
         return;
     }
 }
@@ -89,11 +88,11 @@ void BaseDownload::StopDownload(const QString &uid) {
 
 
 void BaseDownload::Clear() {
-    for (auto& iter : refle_) {
-        iter.first->abort();
-        iter.first->deleteLater();
+    for (auto& [reply, info] : refle_) {
+        if (!info.is_stop) {
+            AbortReply(reply, info);
+        }
     }
-    refle_.clear();
 }
 
 
@@ -110,6 +109,10 @@ void BaseDownload::SlotDownloadInfo() {
     refle_.erase(iter);
     reply->deleteLater();
 
+    if (reply->error() == QNetworkReply::OperationCanceledError) {
+        qDebug() << __FUNCTION__ << "active trigger stop";
+        return;
+    }
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << __FUNCTION__ << "not allowed head:" << reply->errorString();
         emit SigDownloadInfo(0, false);
@@ -138,7 +141,7 @@ void BaseDownload::SlotReadyRead() {
     }
 
     if (cb_) {
-        cb_(iter->second, iter->first->readAll());
+        cb_(iter->second.uid, iter->first->readAll());
     }
 }
 
@@ -152,17 +155,29 @@ void BaseDownload::SlotDownloadFinished() {
         return;
     }
 
-    iter->first->deleteLater();
-    QString uid = std::move(iter->second);
-    bool result = iter->first->error() == QNetworkReply::NoError;
-    QString error =  iter->first->errorString();
-    refle_.erase(iter);
+    QNetworkReply* reply = iter->first;
+    QString uid = std::move(iter->second.uid);
 
-    emit SigDownloadFinished(uid, result, error);
+    refle_.erase(iter);
+    reply->deleteLater();
+
+    QNetworkReply::NetworkError err = reply->error();
+    if (err == QNetworkReply::OperationCanceledError) {
+        qDebug() << __FUNCTION__ << "active trigger stop";
+        return;
+    }
+    emit SigDownloadFinished(uid, err == QNetworkReply::NoError, reply->errorString());
 }
 
 
 
 QString BaseDownload::CreateUid() const {
     return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+
+
+void BaseDownload::AbortReply(QNetworkReply *reply, ReplyInfo& info) {
+    info.is_stop = true;
+    reply->abort();
 }
